@@ -1,0 +1,24 @@
+## Run This code in jupyter notebook
+
+from openai import OpenAI
+import gradio as gr
+key = "enter your API key"
+
+gemini_model = OpenAI(api_key=key,base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+def Bankmanager (myprompt):
+    mymsg = [
+        {"role":"system","content":"act as a Bank manager"},
+        {"role":"user","content":myprompt}
+    ]
+    
+    response = gemini_model.chat.completions.create(model="gemini-2.5-flash",messages= mymsg)
+    response
+
+    return (response.choices[0].message.content)
+    
+myadvice= stock_market("loan info")
+print(myadvice)
+title = "Bank manager"
+description = "Enter your details to get loan info"
+gr.Interface(fn=Bank manager, title=title,
+    description=description, inputs="text", outputs="text").launch()
