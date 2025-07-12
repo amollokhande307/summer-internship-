@@ -1,0 +1,59 @@
+import streamlit as st
+from PIL import Image
+
+st.set_page_config(page_title="college Student Profile", layout="centered")
+
+st.title("🎓College Student Profile App")
+
+with st.form("student_profile_form"):
+    st.header("Enter Student Details")
+    name = st.text_input("Name")
+    age = st.number_input("Age", min_value=1, max_value=100)
+    gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+    course = st.text_input("Course Enrolled")
+    semester = st.number_input("Semester", min_value=1, max_value=10)
+    email = st.text_input("Email")
+    phone = st.text_input("Phone Number")
+    bio = st.text_area("Brief Bio")
+    skills = st.text_input("Skills (comma-separated)")
+    profile_pic = st.file_uploader("Upload Profile Picture", type=["jpg", "jpeg", "png"])
+
+    submitted = st.form_submit_button("Create Profile")
+
+if submitted:
+    st.success("✅ Profile Created!")
+    st.header("📄 Student Profile")
+
+    
+    st.subheader("Personal Information")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write(f"*Name:* {name}")
+        st.write(f"*Age:* {age}")
+        st.write(f"*Gender:* {gender}")
+        st.write(f"*Course:* {course}")
+        st.write(f"*Semester:* {semester}")
+        st.write(f"*CGPA:* {cgpa:.2f}")
+
+    with col2:
+        st.write(f"*Email:* {email}")
+        st.write(f"*Phone:* {phone}")
+        st.write("*Bio:*")
+        st.write(bio)
+
+    
+    if skills:
+        st.subheader("Skills")
+        skills_list = [skill.strip() for skill in skills.split(",")]
+        st.write(", ".join(skills_list))
+    else:
+        st.warning("No skills provided.")
+
+    
+    if profile_pic is not None:
+        st.subheader("📷 Profile Picture")
+        image = Image.open(profile_pic)
+        st.image(image, width=200)
+    else:
+        st.warning("No profile picture uploaded.")
