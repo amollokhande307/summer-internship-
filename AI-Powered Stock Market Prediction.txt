@@ -1,0 +1,580 @@
+import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import google.generativeai as genai
+import time
+import re
+from urllib.parse import urljoin, quote
+import os
+
+st.set_page_config(
+    page_title="Stock Market Predictor",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.markdown("""
+<style>
+    .main-header {
+        text-align: center;
+        color: #2e86de;
+        font-size: 3rem;
+        margin-bottom: 2rem;
+    }
+    .stock-card {
+        background-color: #f8f9fa;
+        padding: 2rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .info-item {
+        background-color: #f8f9fa;
+        padding: 0.8rem;
+        margin: 0.5rem 0;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+        color: #000000;
+        font-weight: bold;
+    }
+    .prediction-item {
+        background-color: #fff3cd;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border-radius: 5px;
+        border-left: 4px solid #ffc107;
+        color: #000000;
+        font-weight: bold;
+    }
+    .error-message {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 5px;
+        border-left: 4px solid #dc3545;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+class StockPredictor:
+    def __init__(self, gemini_api_key):
+        self.base_urls = {
+            "screener": "https://www.screener.in/",
+            "tickertape": "https://www.tickertape.in/",
+            "equitypandit": "https://www.equitypandit.com/",
+            "moneycontrol": "https://www.moneycontrol.com/"
+        }
+        
+        self.stock_symbols = {
+            "tcs": "TCS",
+            "tata consultancy services": "TCS",
+            "reliance": "RELIANCE",
+            "reliance industries": "RELIANCE",
+            "hdfc": "HDFCBANK",
+            "hdfc bank": "HDFCBANK",
+            "infosys": "INFY",
+            "wipro": "WIPRO",
+            "bharti airtel": "BHARTIARTL",
+            "airtel": "BHARTIARTL",
+            "icici bank": "ICICIBANK",
+            "icici": "ICICIBANK",
+            "sbi": "SBIN",
+            "state bank of india": "SBIN",
+            "maruti suzuki": "MARUTI",
+            "maruti": "MARUTI"
+        }
+        
+        if gemini_api_key:
+            try:
+                genai.configure(api_key=gemini_api_key)
+                self.model = genai.GenerativeModel('gemini-1.5-flash')
+                self.gemini_available = True
+            except Exception as e:
+                st.warning(f"Gemini API initialization failed: {str(e)}")
+                self.gemini_available = False
+        else:
+            self.gemini_available = False
+    
+    def process_user_query(self, user_input):
+        if not self.gemini_available:
+            return self.simple_query_processing(user_input)
+            
+        try:
+            prompt = f"""
+            Extract the main stock/company name from this query: "{user_input}"
+            Return only the company name, nothing else.
+            Examples:
+            - "how is Reliance performing" -> "Reliance"
+            - "prediction for TCS stock" -> "TCS"
+            - "HDFC Bank analysis" -> "HDFC Bank"
+            
+            Query: {user_input}
+            Company name:
+            """
+            
+            response = self.model.generate_content(prompt)
+            processed_query = response.text.strip()
+            return processed_query if processed_query else user_input.strip()
+            
+        except Exception as e:
+            st.warning(f"Gemini processing failed: {str(e)}. Using fallback processing.")
+            return self.simple_query_processing(user_input)
+    
+    def simple_query_processing(self, user_input):
+        clean_input = user_input.lower().strip()
+        
+        for key, symbol in self.stock_symbols.items():
+            if key in clean_input:
+                return symbol
+        
+        common_words = ['stock', 'share', 'analysis', 'prediction', 'forecast', 'how', 'is', 'the', 'about', 'information', 'price', 'today']
+        words = clean_input.split()
+        filtered_words = [word for word in words if word not in common_words]
+        
+        if filtered_words:
+            return filtered_words[0].upper()
+        else:
+            return user_input.strip().upper()
+    
+    def search_stocks(self, query):
+        results = {}
+        
+        symbol = self.get_stock_symbol(query)
+        
+        try:
+            screener_results = self._try_screener_direct(symbol, query)
+            if screener_results:
+                results['screener'] = screener_results
+        except Exception as e:
+            st.warning(f"Screener.in access failed: {str(e)}")
+        
+        try:
+            tickertape_results = self._try_tickertape_direct(symbol, query)
+            if tickertape_results:
+                results['tickertape'] = tickertape_results
+        except Exception as e:
+            st.warning(f"Tickertape.in access failed: {str(e)}")
+        
+        try:
+            moneycontrol_results = self._try_moneycontrol(symbol, query)
+            if moneycontrol_results:
+                results['moneycontrol'] = moneycontrol_results
+        except Exception as e:
+            st.warning(f"MoneyControl access failed: {str(e)}")
+        
+        return results
+    
+    def get_stock_symbol(self, query):
+        query_lower = query.lower()
+        
+        for key, symbol in self.stock_symbols.items():
+            if key in query_lower:
+                return symbol
+        
+        return query.upper().replace(' ', '')
+    
+    def _try_screener_direct(self, symbol, query):
+        possible_urls = [
+            f"https://www.screener.in/company/{symbol}/",
+            f"https://www.screener.in/company/{symbol}/consolidated/",
+            f"https://www.screener.in/company/{query.upper().replace(' ', '')}/",
+        ]
+        
+        for url in possible_urls:
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                response = requests.get(url, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    return [{
+                        'name': f"{query} - Screener.in",
+                        'url': url,
+                        'source': 'Screener.in'
+                    }]
+            except:
+                continue
+        
+        return []
+    
+    def _try_tickertape_direct(self, symbol, query):
+        possible_urls = [
+            f"https://www.tickertape.in/stocks/{query.lower().replace(' ', '-')}-{symbol}",
+            f"https://www.tickertape.in/stocks/{symbol.lower()}",
+        ]
+        
+        for url in possible_urls:
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                response = requests.get(url, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    return [{
+                        'name': f"{query} - Tickertape.in",
+                        'url': url,
+                        'source': 'Tickertape.in'
+                    }]
+            except:
+                continue
+        
+        return []
+    
+    def _try_moneycontrol(self, symbol, query):
+        try:
+            search_url = f"https://www.moneycontrol.com/stocks/company_info/stock_news.php?sc_id={symbol}&scat=N"
+            
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            response = requests.get(search_url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                return [{
+                    'name': f"{query} - MoneyControl",
+                    'url': search_url,
+                    'source': 'MoneyControl'
+                }]
+        except:
+            pass
+        
+        return []
+    
+    def scrape_stock_info(self, url, source):
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            if source == 'Screener.in':
+                return self._scrape_screener_improved(soup, url)
+            elif source == 'Tickertape.in':
+                return self._scrape_tickertape_improved(soup, url)
+            elif source == 'MoneyControl':
+                return self._scrape_moneycontrol(soup, url)
+            else:
+                return self._generic_scrape(soup, url, source)
+                
+        except Exception as e:
+            raise Exception(f"Scraping failed for {source}: {str(e)}")
+    
+    def _scrape_screener_improved(self, soup, url):
+        info = {}
+        
+        name_selectors = [
+            'h1',
+            '.company-name',
+            'h2',
+            '.header-company-name'
+        ]
+        
+        name_element = None
+        for selector in name_selectors:
+            name_element = soup.select_one(selector)
+            if name_element:
+                break
+        
+        info['name'] = name_element.get_text().strip() if name_element else "Company Information"
+        
+        price_selectors = [
+            '.current-price',
+            '.price',
+            '.number.price',
+            '#top-ratios .number'
+        ]
+        
+        price_element = None
+        for selector in price_selectors:
+            price_element = soup.select_one(selector)
+            if price_element:
+                break
+        
+        info['price'] = price_element.get_text().strip() if price_element else "N/A"
+        
+        metrics = {}
+        
+        ratio_tables = soup.find_all('table') + soup.find_all('ul', class_='ratios')
+        
+        for table in ratio_tables:
+            rows = table.find_all('tr') + table.find_all('li')
+            for row in rows:
+                cells = row.find_all(['td', 'th', 'span'])
+                if len(cells) >= 2:
+                    key = cells[0].get_text().strip()
+                    value = cells[1].get_text().strip()
+                    if key and value and key != value:
+                        metrics[key] = value
+        
+        if not metrics:
+            for element in soup.find_all(['div', 'span', 'p']):
+                text = element.get_text().strip()
+                if ':' in text and len(text) < 100:
+                    parts = text.split(':', 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        value = parts[1].strip()
+                        if key and value:
+                            metrics[key] = value
+        
+        info['metrics'] = metrics
+        
+        about_selectors = [
+            '.company-info',
+            '.about',
+            '.description',
+            'p'
+        ]
+        
+        about_text = ""
+        for selector in about_selectors:
+            elements = soup.select(selector)
+            for element in elements:
+                text = element.get_text().strip()
+                if len(text) > 50:
+                    about_text = text
+                    break
+            if about_text:
+                break
+        
+        info['about'] = about_text if about_text else "No description available"
+        info['url'] = url
+        info['source'] = 'Screener.in'
+        
+        return info
+    
+    def _scrape_tickertape_improved(self, soup, url):
+        info = {}
+        
+        name_selectors = [
+            'h1',
+            '.stock-name',
+            '.header-title',
+            '.company-name'
+        ]
+        
+        name_element = None
+        for selector in name_selectors:
+            name_element = soup.select_one(selector)
+            if name_element:
+                break
+        
+        info['name'] = name_element.get_text().strip() if name_element else "Stock Information"
+        
+        price_selectors = [
+            '.current-price',
+            '.last-price',
+            '.price',
+            '[data-testid="stock-price"]'
+        ]
+        
+        price_element = None
+        for selector in price_selectors:
+            price_element = soup.select_one(selector)
+            if price_element:
+                break
+        
+        info['price'] = price_element.get_text().strip() if price_element else "N/A"
+        
+        metrics = {}
+        
+        metric_sections = soup.find_all(['table', 'div'], class_=re.compile(r'metric|data|stats|info'))
+        
+        for section in metric_sections:
+            items = section.find_all(['tr', 'div', 'li'])
+            for item in items:
+                text = item.get_text().strip()
+                if ':' in text and len(text) < 100:
+                    parts = text.split(':', 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        value = parts[1].strip()
+                        if key and value:
+                            metrics[key] = value
+        
+        info['metrics'] = metrics
+        
+        summary_selectors = [
+            '.summary',
+            '.description',
+            '.overview',
+            '.company-info'
+        ]
+        
+        summary_text = ""
+        for selector in summary_selectors:
+            elements = soup.select(selector)
+            for element in elements:
+                text = element.get_text().strip()
+                if len(text) > 50:
+                    summary_text = text
+                    break
+            if summary_text:
+                break
+        
+        info['summary'] = summary_text if summary_text else "No summary available"
+        info['url'] = url
+        info['source'] = 'Tickertape.in'
+        
+        return info
+    
+    def _scrape_moneycontrol(self, soup, url):
+        info = {}
+        
+        info['name'] = "MoneyControl Stock Data"
+        info['price'] = "N/A"
+        
+        content = []
+        for p in soup.find_all('p'):
+            text = p.get_text().strip()
+            if text and len(text) > 20:
+                content.append(text)
+                if len(content) >= 3:
+                    break
+        
+        info['content'] = content if content else ["Stock information available on MoneyControl"]
+        info['url'] = url
+        info['source'] = 'MoneyControl'
+        
+        return info
+    
+    def _generic_scrape(self, soup, url, source):
+        info = {}
+        
+        title_element = soup.find('h1') or soup.find('title')
+        info['name'] = title_element.get_text().strip() if title_element else f"{source} Information"
+        
+        content = []
+        for p in soup.find_all('p'):
+            text = p.get_text().strip()
+            if text and len(text) > 30:
+                content.append(text)
+                if len(content) >= 5:
+                    break
+        
+        info['content'] = content if content else ["Information available from source"]
+        info['url'] = url
+        info['source'] = source
+        
+        return info
+
+def main():
+    st.markdown('<h1 class="main-header">📈 Stock Market Predictor</h1>', unsafe_allow_html=True)
+    st.markdown("---")
+    
+    st.sidebar.header("Configuration")
+    api_key = st.sidebar.text_input(
+        "Enter your Gemini API Key (optional):",
+        type="password",
+        help="You can get a free API key from https://makersuite.google.com/app/apikey"
+    )
+    
+    gemini_api_key = api_key if api_key else os.getenv('GEMINI_API_KEY')
+    
+    stock_predictor = StockPredictor(gemini_api_key)
+    
+    st.sidebar.markdown("### Popular Stocks")
+    st.sidebar.markdown("- TCS (Tata Consultancy Services)")
+    st.sidebar.markdown("- Reliance Industries")
+    st.sidebar.markdown("- HDFC Bank")
+    st.sidebar.markdown("- Infosys")
+    st.sidebar.markdown("- ICICI Bank")
+    st.sidebar.markdown("- State Bank of India")
+    
+    st.markdown("### What stock are you looking for?")
+    user_query = st.text_input(
+        "Enter the stock/company name (e.g., 'TCS', 'Reliance', 'HDFC Bank')",
+        placeholder="Type your stock query here..."
+    )
+    
+    if user_query:
+        with st.spinner("🔍 Searching for stock information..."):
+            try:
+                processed_query = stock_predictor.process_user_query(user_query)
+                st.info(f"Searching for: {processed_query}")
+                
+                search_results = stock_predictor.search_stocks(processed_query)
+                
+                total_results = sum(len(results) for results in search_results.values())
+                
+                if total_results == 0:
+                    st.error("No stock information found. Please try a different query.")
+                    st.markdown("### Suggestions:")
+                    st.markdown("- Try using common stock symbols like 'TCS', 'RELIANCE', 'HDFC'")
+                    st.markdown("- Check your spelling")
+                    st.markdown("- Try searching for the full company name")
+                    return
+                
+                st.success(f"Found {total_results} sources for: {processed_query}")
+                st.markdown("---")
+                
+                for source, results in search_results.items():
+                    if results:
+                        st.markdown(f"### Information from {source.title()}")
+                        
+                        for result in results:
+                            with st.expander(f"📊 {result['name']}", expanded=True):
+                                with st.spinner(f"Fetching data from {source}..."):
+                                    try:
+                                        stock_info = stock_predictor.scrape_stock_info(result['url'], result['source'])
+                                        display_stock_info(stock_info)
+                                    except Exception as e:
+                                        st.error(f"Failed to fetch data: {str(e)}")
+                                        st.markdown(f"**Direct Link:** [{result['name']}]({result['url']})")
+                
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
+                st.markdown("Please try again with a different query.")
+
+def display_stock_info(stock_info):
+    if not stock_info:
+        st.warning("No information available")
+        return
+        
+    with st.container():
+        st.markdown(f"### {stock_info.get('name', stock_info.get('title', 'Stock Information'))}")
+        st.markdown(f"*Source: [{stock_info['source']}]({stock_info['url']})*")
+        
+        if stock_info['source'] in ['Screener.in', 'Tickertape.in']:
+            if 'price' in stock_info and stock_info['price'] != 'N/A':
+                st.markdown(f"**Current Price:** {stock_info['price']}")
+            
+            if 'metrics' in stock_info and stock_info['metrics']:
+                st.markdown("#### Key Metrics")
+                metrics = stock_info['metrics']
+                
+                if metrics:
+                    metric_items = list(metrics.items())
+                    num_cols = min(3, len(metric_items))
+                    if num_cols > 0:
+                        cols = st.columns(num_cols)
+                        
+                        for i, (name, value) in enumerate(metric_items):
+                            if i < 15:
+                                with cols[i % num_cols]:
+                                    st.markdown(f"<div class='info-item'><strong>{name}:</strong> {value}</div>", 
+                                               unsafe_allow_html=True)
+                else:
+                    st.info("No metrics available")
+            
+            about_text = stock_info.get('about', stock_info.get('summary', ''))
+            if about_text and about_text != 'No description available':
+                st.markdown("#### Overview")
+                st.markdown(f"<div class='info-item'>{about_text[:500]}...</div>", unsafe_allow_html=True)
+                
+        elif stock_info['source'] in ['MoneyControl', 'EquityPandit']:
+            if 'content' in stock_info and stock_info['content']:
+                st.markdown("#### Information")
+                for i, paragraph in enumerate(stock_info['content']):
+                    if paragraph and paragraph.strip():
+                        st.markdown(f"<div class='prediction-item'>{paragraph}</div>", 
+                                   unsafe_allow_html=True)
+                        if i >= 3:
+                            break
+        
+        st.markdown(f"[View Full Information on {stock_info['source']}]({stock_info['url']})")
+        st.markdown("---")
+
+if __name__ == "__main__":
+    main()
