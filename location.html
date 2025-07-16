@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Location Viewer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      text-align: center;
+      padding: 40px;
+    }
+    #location {
+      margin-top: 30px;
+      font-size: 1.2rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 20px;
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+    }
+    button {
+      padding: 12px 25px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background-color: #34d399;
+      color: #111;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #10b981;
+    }
+  </style>
+</head>
+<body>
+  <h1>📍 Live Location Viewer</h1>
+  <button onclick="getLocation()">Get My Location</button>
+  <div id="location">Click the button to get your live location</div>
+
+  <script>
+    function getLocation() {
+      const output = document.getElementById("location");
+
+      if (!navigator.geolocation) {
+        output.innerHTML = "Geolocation is not supported by your browser.";
+        return;
+      }
+
+      output.innerHTML = "Fetching location...";
+
+      navigator.geolocation.watchPosition(
+        (position) => {
+          const lat = position.coords.latitude.toFixed(6);
+          const lon = position.coords.longitude.toFixed(6);
+          const acc = position.coords.accuracy.toFixed(2);
+
+          output.innerHTML = `
+            <p><strong>Latitude:</strong> ${lat}</p>
+            <p><strong>Longitude:</strong> ${lon}</p>
+            <p><strong>Accuracy:</strong> ±${acc} meters</p>
+            <p><a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank" style="color:#facc15;">View on Google Maps</a></p>
+          `;
+        },
+        (error) => {
+          output.innerHTML = `Error: ${error.message}`;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    }
+  </script>
+</body>
+</html>
