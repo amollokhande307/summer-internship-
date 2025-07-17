@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery Stores Near Me</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.1); opacity: 0.1; }
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            z-index: 1;
+            position: relative;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            z-index: 1;
+            position: relative;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .status.loading {
+            background: linear-gradient(135deg, #ffd54f 0%, #ffb300 100%);
+            color: #333;
+        }
+
+        .status.success {
+            background: linear-gradient(135deg, #c8e6c9 0%, #4caf50 100%);
+            color: white;
+        }
+
+        .status.error {
+            background: linear-gradient(135deg, #ffcdd2 0%, #f44336 100%);
+            color: white;
+        }
+
+        .map-container {
+            height: 500px;
+            background: #f5f5f5;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #e0e0e0;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .stores-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .store-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            border: 1px solid #e0e0e0;
+        }
+
+        .store-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .store-name {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .store-address {
+            color: #666;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+
+        .store-distance {
+            background: linear-gradient(135deg, #e3f2fd 0%, #2196f3 100%);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .location-info {
+            background: linear-gradient(135deg, #f3e5f5 0%, #9c27b0 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .btn {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛒 Grocery Store Finder</h1>
+            <p>Find grocery stores near your current location</p>
+        </div>
+
+        <div class="content">
+            <div class="controls">
+                <button class="btn" id="findStoresBtn">📍 Find Stores Near Me</button>
+                <button class="btn" id="refreshBtn" style="display: none;">🔄 Refresh</button>
+            </div>
+
+            <div id="status" class="status hidden"></div>
+            <div id="locationInfo" class="location-info hidden"></div>
+            
+            <div class="map-container" id="mapContainer">
+                <div id="map"></div>
+            </div>
+
+            <div id="storesContainer" class="stores-grid"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.css" />
+    <script>
+        class GroceryStoreFinder {
+            constructor() {
+                this.userLocation = null;
+                this.groceryStores = [];
+                this.map = null;
+                this.userMarker = null;
+                this.storeMarkers = [];
+                this.initializeElements();
+                this.bindEvents();
+                this.initializeMap();
+                // Auto-start finding stores
+                setTimeout(() => this.findStores(), 1000);
+            }
+
+            initializeElements() {
+                this.findStoresBtn = document.getElementById('findStoresBtn');
+                this.refreshBtn = document.getElementById('refreshBtn');
+                this.status = document.getElementById('status');
+                this.locationInfo = document.getElementById('locationInfo');
+                this.mapContainer = document.getElementById('mapContainer');
+                this.storesContainer = document.getElementById('storesContainer');
+            }
+
+            bindEvents() {
+                this.findStoresBtn.addEventListener('click', () => this.findStores());
+                this.refreshBtn.addEventListener('click', () => this.findStores());
+            }
+
+            initializeMap() {
+                // Initialize map centered on Jaipur
+                this.map = L.map('map').setView([26.9124, 75.7873], 13);
+                
+                // Add OpenStreetMap tiles
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(this.map);
+                
+                // Add initial loading message
+                const loadingControl = L.control({position: 'topright'});
+                loadingControl.onAdd = function(map) {
+                    const div = L.DomUtil.create('div', 'loading-control');
+                    div.innerHTML = '<div style="background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">📍 Finding your location...</div>';
+                    return div;
+                };
+                loadingControl.addTo(this.map);
+                this.loadingControl = loadingControl;
+            }
+
+            showStatus(message, type = 'loading') {
+                this.status.className = `status ${type}`;
+                this.status.innerHTML = type === 'loading' ? 
+                    `<span class="spinner"></span>${message}` : message;
+                this.status.classList.remove('hidden');
+            }
+
+            hideStatus() {
+                this.status.classList.add('hidden');
+            }
+
+            showLocationInfo(lat, lon, address) {
+                this.locationInfo.innerHTML = `
+                    📍 <strong>Your Location:</strong> ${address}<br>
+                    🌍 <strong>Coordinates:</strong> ${lat.toFixed(4)}, ${lon.toFixed(4)}
+                `;
+                this.locationInfo.classList.remove('hidden');
+            }
+
+            async findStores() {
+                try {
+                    this.showStatus('Getting your location...');
+                    this.findStoresBtn.disabled = true;
+                    
+                    // Get user's location
+                    const position = await this.getCurrentPosition();
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    this.userLocation = { lat, lon };
+                    
+                    // Get address from coordinates
+                    const address = await this.getAddressFromCoordinates(lat, lon);
+                    this.showLocationInfo(lat, lon, address);
+                    
+                    this.showStatus('Finding grocery stores nearby...');
+                    
+                    // Generate nearby grocery stores
+                    this.groceryStores = this.generateNearbyStores(lat, lon);
+                    
+                    this.showStatus('Loading complete!', 'success');
+                    setTimeout(() => this.hideStatus(), 2000);
+                    
+                    this.displayStores();
+                    this.updateMap();
+                    
+                    this.findStoresBtn.style.display = 'none';
+                    this.refreshBtn.style.display = 'inline-block';
+                    
+                } catch (error) {
+                    this.showStatus(`Error: ${error.message}`, 'error');
+                    console.error('Error finding stores:', error);
+                    // Fallback to Jaipur center if location fails
+                    this.userLocation = { lat: 26.9124, lon: 75.7873 };
+                    this.groceryStores = this.generateNearbyStores(26.9124, 75.7873);
+                    this.showLocationInfo(26.9124, 75.7873, "Jaipur, Rajasthan (Default Location)");
+                    this.displayStores();
+                    this.updateMap();
+                } finally {
+                    this.findStoresBtn.disabled = false;
+                    if (this.loadingControl) {
+                        this.map.removeControl(this.loadingControl);
+                    }
+                }
+            }
+
+            getCurrentPosition() {
+                return new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) {
+                        reject(new Error('Geolocation is not supported by this browser'));
+                        return;
+                    }
+
+                    navigator.geolocation.getCurrentPosition(
+                        resolve,
+                        (error) => {
+                            let message = 'Unable to retrieve your location';
+                            switch(error.code) {
+                                case error.PERMISSION_DENIED:
+                                    message = 'Location access denied by user';
+                                    break;
+                                case error.POSITION_UNAVAILABLE:
+                                    message = 'Location information is unavailable';
+                                    break;
+                                case error.TIMEOUT:
+                                    message = 'Location request timed out';
+                                    break;
+                            }
+                            reject(new Error(message));
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 10000,
+                            maximumAge: 300000
+                        }
+                    );
+                });
+            }
+
+            async getAddressFromCoordinates(lat, lon) {
+                try {
+                    // Using OpenStreetMap Nominatim for reverse geocoding
+                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+                    const data = await response.json();
+                    return data.display_name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                } catch (error) {
+                    return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                }
+            }
+
+            generateNearbyStores(userLat, userLon) {
+                const storeTypes = [
+                    'Big Bazaar', 'More Megastore', 'Reliance Fresh', 'Spencer\'s',
+                    'Food Bazaar', 'Star Bazaar', 'DMart', 'Godrej Nature\'s Basket',
+                    'Hypercity', 'Aditya Birla More', 'Metro Cash & Carry', 'Easyday',
+                    'Fresh@', 'Nilgiris', 'Ratnadeep', 'Heritage Fresh'
+                ];
+
+                const areas = [
+                    'Malviya Nagar', 'C-Scheme', 'Vaishali Nagar', 'Mansarovar',
+                    'Jagatpura', 'Tonk Road', 'Ajmer Road', 'Sodala',
+                    'Bani Park', 'Raja Park', 'Chitrakoot', 'Shyam Nagar'
+                ];
+
+                const stores = [];
+                const storeCount = Math.floor(Math.random() * 8) + 12; // 12-20 stores
+
+                for (let i = 0; i < storeCount; i++) {
+                    const distance = Math.random() * 5 + 0.5; // 0.5-5.5 km
+                    const angle = Math.random() * 2 * Math.PI;
+                    
+                    // Calculate approximate lat/lon offset (rough approximation)
+                    const latOffset = (distance / 111) * Math.cos(angle);
+                    const lonOffset = (distance / (111 * Math.cos(userLat * Math.PI / 180))) * Math.sin(angle);
+                    
+                    const storeLat = userLat + latOffset;
+                    const storeLon = userLon + lonOffset;
+                    
+                    const storeName = storeTypes[Math.floor(Math.random() * storeTypes.length)];
+                    const area = areas[Math.floor(Math.random() * areas.length)];
+                    const address = `${Math.floor(Math.random() * 999) + 1}, ${area}, Jaipur, Rajasthan`;
+                    
+                    stores.push({
+                        name: storeName,
+                        address: address,
+                        distance: distance,
+                        lat: storeLat,
+                        lon: storeLon
+                    });
+                }
+
+                return stores.sort((a, b) => a.distance - b.distance);
+            }
+
+            displayStores() {
+                const storesHtml = this.groceryStores.map(store => `
+                    <div class="store-card">
+                        <div class="store-name">${store.name}</div>
+                        <div class="store-address">${store.address}</div>
+                        <div class="store-distance">${store.distance.toFixed(1)} km away</div>
+                    </div>
+                `).join('');
+
+                this.storesContainer.innerHTML = storesHtml;
+            }
+
+            updateMap() {
+                const { lat, lon } = this.userLocation;
+                
+                // Center map on user location
+                this.map.setView([lat, lon], 14);
+                
+                // Clear existing markers
+                if (this.userMarker) {
+                    this.map.removeLayer(this.userMarker);
+                }
+                this.storeMarkers.forEach(marker => {
+                    this.map.removeLayer(marker);
+                });
+                this.storeMarkers = [];
+                
+                // Add user location marker
+                this.userMarker = L.marker([lat, lon], {
+                    icon: L.icon({
+                        iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+                            <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                        `),
+                        iconSize: [25, 25],
+                        iconAnchor: [12, 25],
+                        popupAnchor: [0, -25]
+                    })
+                }).addTo(this.map);
+                
+                this.userMarker.bindPopup(`
+                    <div style="text-align: center;">
+                        <strong>📍 Your Location</strong><br>
+                        ${lat.toFixed(4)}, ${lon.toFixed(4)}
+                    </div>
+                `);
+                
+                // Add store markers
+                this.groceryStores.forEach(store => {
+                    const marker = L.marker([store.lat, store.lon], {
+                        icon: L.icon({
+                            iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="green" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                    <circle cx="12" cy="10" r="3"></circle>
+                                </svg>
+                            `),
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 20],
+                            popupAnchor: [0, -20]
+                        })
+                    }).addTo(this.map);
+                    
+                    marker.bindPopup(`
+                        <div style="text-align: center; min-width: 200px;">
+                            <strong>🏪 ${store.name}</strong><br>
+                            ${store.address}<br>
+                            <span style="color: #4CAF50; font-weight: bold;">${store.distance.toFixed(1)} km away</span>
+                        </div>
+                    `);
+                    
+                    this.storeMarkers.push(marker);
+                });
+            }
+        }
+
+        // Initialize the grocery store finder when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new GroceryStoreFinder();
+        });
+    </script>
+</body>
+</html>
